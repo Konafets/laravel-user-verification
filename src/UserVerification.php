@@ -6,6 +6,7 @@
  */
 namespace Jrean\UserVerification;
 
+use Carbon\Carbon;
 use Illuminate\Contracts\Auth\Authenticatable as AuthenticatableContract;
 use Illuminate\Database\Schema\Builder;
 use Illuminate\Contracts\Mail\Mailer;
@@ -90,6 +91,8 @@ class UserVerification
         }
 
         $user->verified = false;
+
+        $user->verified_at = null;
 
         $user->verification_token = $token;
 
@@ -303,7 +306,7 @@ class UserVerification
      */
     protected function isVerified($user)
     {
-        if ($user->verified == true) {
+        if ($user->verified == true && !is_null($user->verified_at)) {
             throw new UserIsVerifiedException();
         }
     }
@@ -336,6 +339,8 @@ class UserVerification
 
         $user->verified = true;
 
+        $user->verified_at = Carbon::now();
+
         $this->updateUser($user);
 
         event(new UserVerified($user));
@@ -353,7 +358,8 @@ class UserVerification
             ->where('email', $user->email)
             ->update([
                 'verification_token' => $user->verification_token,
-                'verified' => $user->verified
+                'verified' => $user->verified,
+                'verified_at' => $user->verified_at,
             ]);
     }
 
@@ -367,6 +373,7 @@ class UserVerification
     protected function isCompliant(AuthenticatableContract $user)
     {
         return $this->hasColumn($user, 'verified')
+            && $this->hasColumn($user, 'verified_at')
             && $this->hasColumn($user, 'verification_token')
             ? true
             : false;
