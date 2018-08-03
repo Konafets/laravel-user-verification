@@ -19,4 +19,6 @@ return [
     'token_expired_generate_new_token_action_text' => 'Request a new confirmation token',
     'please_check_your_inbox' => 'Please check your e-mail inbox',
     'invalid_token' => 'Your token is invalid!',
+    'already_verified' => 'Your E-Mail address is already validated.',
+    'validation_success' => 'You successfully validated your account.',
 ];

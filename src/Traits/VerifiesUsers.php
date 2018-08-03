@@ -35,21 +35,25 @@ trait VerifiesUsers
             $token = ConfirmationToken::whereToken($token)->first() ?? new ConfirmationToken();
             $user = UserVerificationFacade::process($request->input('email'), $token, $this->userTable());
         } catch (UserNotFoundException $e) {
-            return redirect($this->redirectIfVerificationFails());
+            return redirect($this->redirectIfVerificationFails())
+                ->withError(trans('laravel-user-verification::user-verification.verification_error_header'));
         } catch (UserIsVerifiedException $e) {
-            return redirect($this->redirectIfVerified());
+            return redirect($this->redirectIfVerified())
+                ->withError(trans('laravel-user-verification::user-verification.already_verified'));
         } catch (TokenMismatchException $e) {
-            return redirect($this->redirectIfVerificationFails());
+            return redirect($this->redirectIfVerificationFails())
+                ->withError(trans('laravel-user-verification::user-verification.invalid_token'));
         } catch (TokenExpiredException $e) {
             return redirect($this->redirectIfTokenExpired($e))
                 ->withError(trans('laravel-user-verification::user-verification.token_expired_error_header'));
         }
-
+        
         if (config('user-verification.auto-login') === true) {
             auth()->loginUsingId($user->id);
         }
 
-        return redirect($this->redirectAfterVerification());
+        return redirect($this->redirectAfterVerification())
+            ->withSuccess(trans('laravel-user-verification::user-verification.validation_success'));
     }
 
     /**
