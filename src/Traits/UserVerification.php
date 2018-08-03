@@ -73,7 +73,7 @@ trait UserVerification
      */
     public function hasVerificationToken()
     {
-        return ! is_null($this->verification_token);
+        return ! is_null($this->confirmationToken->token);
     }
 
     /**
@@ -93,6 +93,6 @@ trait UserVerification
      */
     public function getConfirmationTokenExpiry()
     {
-        return $this->freshTimestamp()->addDays(10);
+        return $this->freshTimestamp()->addDays(config('user-verification.expiration'));
     }
 }

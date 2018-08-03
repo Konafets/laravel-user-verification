@@ -15,6 +15,7 @@ use Illuminate\Support\Str;
 use Jrean\UserVerification\Events\UserVerified;
 use Jrean\UserVerification\Events\VerificationEmailSent;
 use Jrean\UserVerification\Exceptions\ModelNotCompliantException;
+use Jrean\UserVerification\Exceptions\TokenExpiredException;
 use Jrean\UserVerification\Exceptions\TokenMismatchException;
 use Jrean\UserVerification\Exceptions\UserHasNoEmailException;
 use Jrean\UserVerification\Exceptions\UserIsVerifiedException;
@@ -95,8 +96,6 @@ class UserVerification
         $user->verified = false;
 
         $user->verified_at = null;
-
-        $user->verification_token = $token;
 
         $user->confirmationToken()->create([
             'token' => $token,
@@ -276,11 +275,37 @@ class UserVerification
         // If he is, we stop here.
         $this->isVerified($user);
 
+        // After we are sure that the user is not already verified,
+        // we fetch the user with the token.
+        $user = $this->getUserByEmail($email, $userTable, true);
+
         $this->verifyToken($user->token, $requestToken->token);
+
+        if (config('user-verification.expiration') !== false) {
+            $this->isExpired($user, $requestToken);
+        }
 
         $this->wasVerified($user, $requestToken);
 
         return $user;
+    }
+
+    public function resendToken($email, $requestToken, $userTable)
+    {
+        $userModel = config('auth.providers.users.model', Auth\User::class);
+
+        $user = $userModel::whereEmail($email)->first();
+
+        unset($user->{"password"});
+
+        $requestToken = ConfirmationToken::whereToken($requestToken)->first();
+
+        $this->verifyToken($user->confirmationToken->token, $requestToken->token);
+
+        $user->confirmationToken()->delete();
+
+        UserVerification::generate($user->refresh());
+        UserVerification::send($user->refresh());
     }
 
     /**
@@ -288,16 +313,20 @@ class UserVerification
      *
      * @param  string  $email
      * @param  string  $table
+     * @param  bool    $withToken
      * @return stdClass
      *
      * @throws \Jrean\UserVerification\Exceptions\UserNotFoundException
      */
-    protected function getUserByEmail($email, $table)
+    protected function getUserByEmail($email, $table, $withToken = false)
     {
-        $user = DB::table($table)
-            ->where('email', $email)
-            ->join('confirmation_tokens', $table . '.id', '=', 'confirmation_tokens.user_id')
-            ->first();
+        $query = DB::table($table)->where('email', $email);
+
+        if ($withToken) {
+            $query = $query->join('confirmation_tokens', $table . '.id', '=', 'confirmation_tokens.user_id');
+        }
+
+        $user = $query->first();
 
         if ($user === null) {
             throw new UserNotFoundException();
@@ -340,6 +369,19 @@ class UserVerification
     }
 
     /**
+     * Checks if a token has expired
+     *
+     * @param ConfirmationToken $token
+     * @throws TokenExpiredException
+     */
+    protected function isExpired($user, ConfirmationToken $token)
+    {
+        if ($token->hasExpired()) {
+            throw new TokenExpiredException($user, $token);
+        }
+    }
+
+    /**
      * Update and save the given user as verified.
      *
      * @param  stdClass  $user
@@ -371,14 +413,13 @@ class UserVerification
         DB::table($user->table)
             ->where('email', $user->email)
             ->update([
-                'verification_token' => $user->verification_token,
                 'verified' => $user->verified,
                 'verified_at' => $user->verified_at,
             ]);
     }
 
     /**
-     * Determine if the given model table has the verified and verification_token
+     * Determine if the given model table has the verified
      * columns.
      *
      * @param  \Illuminate\Contracts\Auth\Authenticatable  $user
@@ -388,7 +429,6 @@ class UserVerification
     {
         return $this->hasColumn($user, 'verified')
             && $this->hasColumn($user, 'verified_at')
-            && $this->hasColumn($user, 'verification_token')
             ? true
             : false;
     }
